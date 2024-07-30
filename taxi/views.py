@@ -1,6 +1,6 @@
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpRequest
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.urls import reverse_lazy
 from django.views import generic
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -60,24 +60,25 @@ class CarListView(LoginRequiredMixin, generic.ListView):
     queryset = Car.objects.all().select_related("manufacturer")
 
 
-@login_required
-def car_detail_view(request: HttpRequest, pk: int) -> HttpResponse:
-    car = Car.objects.prefetch_related("drivers").get(pk=pk)
-    is_driver = request.user in car.drivers.all()
+class CarDetailView(LoginRequiredMixin, generic.DetailView):
+    model = Car
+    template_name = "taxi/car_detail.html"
+    prefetch_related = ["drivers"]
 
-    if request.method == "POST":
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(**kwargs)
+        car = self.object
+        context["is_driver"] = self.request.user in car.drivers.all()
+        return context
+
+    def post(self, request, *args, **kwargs):
+        car = self.get_object()
         if "delete" in request.POST:
             car.drivers.remove(request.user)
         elif "assign" in request.POST:
             car.drivers.add(request.user)
-        is_driver = not is_driver
 
-    context = {
-        "car": car,
-        "is_driver": is_driver,
-    }
-
-    return render(request, "taxi/car_detail.html", context)
+        return redirect("taxi:car-detail", pk=car.id)
 
 
 class CarCreateView(LoginRequiredMixin, generic.CreateView):
